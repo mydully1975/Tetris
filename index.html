@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>다크 테마 테트리스</title>
+    <style>
+        body {
+            background-color: #1a1a1a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            font-family: Arial, sans-serif;
+        }
+        
+        #game-container {
+            text-align: center;
+        }
+
+        #tetris {
+            border: 2px solid #444;
+            background-color: #2b2b2b;
+        }
+
+        #score {
+            color: #ffffff;
+            font-size: 24px;
+            margin-top: 20px;
+        }
+
+        .game-over {
+            color: #ff4444;
+            font-size: 48px;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: none;
+        }
+
+        @keyframes fadeOut {
+            0% {
+                opacity: 1;
+                transform: scale(1);
+            }
+            50% {
+                opacity: 0.5;
+                transform: scale(1.2) rotate(180deg);
+            }
+            100% {
+                opacity: 0;
+                transform: scale(0) rotate(360deg);
+            }
+        }
+
+        @keyframes sparkle {
+            0% {
+                box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
+            }
+            50% {
+                box-shadow: 0 0 20px 10px rgba(255, 255, 255, 0.5);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(255, 255, 255, 0);
+            }
+        }
+
+        .fade-out {
+            animation: fadeOut 0.8s ease-out, sparkle 0.8s ease-out;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="tetris" width="300" height="600"></canvas>
+        <div id="score">점수: 0</div>
+        <div class="game-over">게임 오버!</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('tetris');
+        const context = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+        const blockSize = 30;
+        const rows = 20;
+        const cols = 10;
+        let score = 0;
+        
+        // 테트리스 블록 색상
+        const colors = [
+            '#FF0D72',
+            '#0DC2FF',
+            '#0DFF72',
+            '#F538FF',
+            '#FF8E0D',
+            '#FFE138',
+            '#3877FF'
+        ];
+
+        // 테트리스 블록 모양
+        const pieces = [
+            [1, 1, 1, 1],     // I
+            [1, 1, 1, 0,      // L
+             0, 0, 1, 0,
+             0, 0, 0, 0,
+             0, 0, 0, 0],
+            [1, 1, 1, 0,      // J 
+             1, 0, 0, 0,
+             0, 0, 0, 0,
+             0, 0, 0, 0],
+            [1, 1, 0, 0,      // O
+             1, 1, 0, 0,
+             0, 0, 0, 0,
+             0, 0, 0, 0],
+            [0, 1, 1, 0,      // S
+             1, 1, 0, 0,
+             0, 0, 0, 0,
+             0, 0, 0, 0],
+            [1, 1, 0, 0,      // Z
+             0, 1, 1, 0,
+             0, 0, 0, 0,
+             0, 0, 0, 0],
+            [0, 1, 0, 0,      // T
+             1, 1, 1, 0,
+             0, 0, 0, 0,
+             0, 0, 0, 0],
+            [1, 0, 0, 0,      // L mirrored
+             1, 1, 1, 0,
+             0, 0, 0, 0,
+             0, 0, 0, 0],
+            [1, 0, 1, 0,      // U shape
+             1, 1, 1, 0,
+             0, 0, 0, 0,
+             0, 0, 0, 0],
+            [1, 0, 1, 0,      // H shape
+             1, 1, 1, 0,
+             1, 0, 1, 0,
+             0, 0, 0, 0],
+            [1, 1, 1, 0,      // Cross
+             0, 1, 0, 0,
+             1, 1, 1, 0,
+             0, 0, 0, 0],
+            [1, 0, 0, 0,      // Stairs
+             1, 1, 0, 0,
+             0, 1, 1, 0,
+             0, 0, 0, 0],
+            [0, 1, 0, 0,      // Diamond
+             1, 1, 1, 0,
+             0, 1, 0, 0,
+             0, 0, 0, 0],
+            [1, 1, 1, 1,      // Plus
+             0, 1, 0, 0,
+             0, 1, 0, 0,
+             0, 0, 0, 0]
+        ];
+
+        let board = Array(rows).fill().map(() => Array(cols).fill(0));
+        let currentPiece = null;
+        let currentPiecePosition = {x: 0, y: 0};
+
+        function createPiece() {
+            const pieceIndex = Math.floor(Math.random() * pieces.length);
+            return {
+                shape: pieces[pieceIndex],
+                color: colors[pieceIndex],
+                x: Math.floor(cols / 2) - 1,
+                y: 0
+            };
+        }
+
+        function draw() {
+            // 게임판 그리기
+            context.fillStyle = '#2b2b2b';
+            context.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 보드의 블록들 그리기
+            for(let y = 0; y < rows; y++) {
+                for(let x = 0; x < cols; x++) {
+                    if(board[y][x]) {
+                        if(typeof board[y][x] === 'object' && board[y][x].fading) {
+                            context.globalAlpha = board[y][x].opacity;
+                            context.save();
+                            context.translate(
+                                (x * blockSize) + blockSize/2,
+                                (y * blockSize) + blockSize/2
+                            );
+                            context.rotate(board[y][x].rotation || 0);
+                            context.scale(board[y][x].scale || 1, board[y][x].scale || 1);
+                            context.fillStyle = board[y][x].color;
+                            context.fillRect(-blockSize/2, -blockSize/2, blockSize - 1, blockSize - 1);
+                            
+                            // 반짝이는 효과
+                            if(board[y][x].sparkle) {
+                                const gradient = context.createRadialGradient(0, 0, 0, 0, 0, blockSize);
+                                gradient.addColorStop(0, 'rgba(255, 255, 255, ' + board[y][x].sparkle + ')');
+                                gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                                context.fillStyle = gradient;
+                                context.fillRect(-blockSize/2, -blockSize/2, blockSize - 1, blockSize - 1);
+                            }
+                            
+                            context.restore();
+                            context.globalAlpha = 1;
+                        } else {
+                            context.fillStyle = typeof board[y][x] === 'object' ? board[y][x].color : colors[board[y][x] - 1];
+                            context.fillRect(x * blockSize, y * blockSize, blockSize - 1, blockSize - 1);
+                        }
+                    }
+                }
+            }
+
+            // 현재 피스 그리기
+            if(currentPiece) {
+                context.fillStyle = currentPiece.color;
+                for(let y = 0; y < 4; y++) {
+                    for(let x = 0; x < 4; x++) {
+                        if(currentPiece.shape[y * 4 + x]) {
+                            context.fillRect(
+                                (currentPiece.x + x) * blockSize,
+                                (currentPiece.y + y) * blockSize,
+                                blockSize - 1,
+                                blockSize - 1
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        function collision() {
+            for(let y = 0; y < 4; y++) {
+                for(let x = 0; x < 4; x++) {
+                    if(currentPiece.shape[y * 4 + x]) {
+                        const boardX = currentPiece.x + x;
+                        const boardY = currentPiece.y + y;
+                        
+                        if(boardX < 0 || boardX >= cols || 
+                           boardY >= rows ||
+                           (board[boardY] && board[boardY][boardX] && !board[boardY][boardX].fading)) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            return false;
+        }
+
+        function merge() {
+            for(let y = 0; y < 4; y++) {
+                for(let x = 0; x < 4; x++) {
+                    if(currentPiece.shape[y * 4 + x]) {
+                        board[currentPiece.y + y][currentPiece.x + x] = {
+                            color: currentPiece.color,
+                            opacity: 1,
+                            fading: false,
+                            rotation: 0,
+                            scale: 1,
+                            sparkle: 0
+                        };
+                    }
+                }
+            }
+        }
+
+        async function clearLines() {
+            let linesCleared = 0;
+            let linesToClear = [];
+            
+            for(let y = rows - 1; y >= 0; y--) {
+                if(board[y].every(cell => cell !== 0 && !cell.fading)) {
+                    linesToClear.push(y);
+                }
+            }
+
+            if(linesToClear.length > 0) {
+                // 애니메이션 시작
+                for(let y of linesToClear) {
+                    for(let x = 0; x < cols; x++) {
+                        board[y][x].fading = true;
+                        board[y][x].rotation = 0;
+                        board[y][x].scale = 1;
+                        board[y][x].sparkle = 0;
+                    }
+                }
+
+                // 화려한 페이드 아웃 애니메이션
+                const frames = 20;
+                for(let frame = 0; frame < frames; frame++) {
+                    const progress = frame / frames;
+                    const opacity = 1 - progress;
+                    const rotation = progress * Math.PI * 2; // 360도 회전
+                    const scale = 1 + progress * 0.5; // 최대 1.5배까지 확대
+                    const sparkle = Math.sin(progress * Math.PI) * 0.5; // 반짝이는 효과
+
+                    for(let y of linesToClear) {
+                        for(let x = 0; x < cols; x++) {
+                            if(board[y][x] && board[y][x].fading) {
+                                board[y][x].opacity = opacity;
+                                board[y][x].rotation = rotation;
+                                board[y][x].scale = scale;
+                                board[y][x].sparkle = sparkle;
+                            }
+                        }
+                    }
+                    draw();
+                    await new Promise(resolve => setTimeout(resolve, 40));
+                }
+
+                // 라인 제거 및 점수 계산
+                linesToClear.sort((a, b) => b - a);
+                for(let y of linesToClear) {
+                    board.splice(y, 1);
+                    board.unshift(Array(cols).fill(0));
+                    linesCleared++;
+                }
+
+                score += linesCleared * 100;
+                scoreElement.textContent = `점수: ${score}`;
+            }
+        }
+
+        function gameOver() {
+            document.querySelector('.game-over').style.display = 'block';
+            return true;
+        }
+
+        async function update() {
+            currentPiece.y++;
+            
+            if(collision()) {
+                currentPiece.y--;
+                merge();
+                await clearLines();
+                currentPiece = createPiece();
+                
+                if(collision()) {
+                    return gameOver();
+                }
+            }
+            return false;
+        }
+
+        // 키보드 컨트롤
+        document.addEventListener('keydown', event => {
+            switch(event.keyCode) {
+                case 37: // 왼쪽
+                    currentPiece.x--;
+                    if(collision()) currentPiece.x++;
+                    break;
+                case 39: // 오른쪽
+                    currentPiece.x++;
+                    if(collision()) currentPiece.x--;
+                    break;
+                case 40: // 아래
+                    update().then(gameOver => {
+                        if(!gameOver) {
+                            draw();
+                        }
+                    });
+                    break;
+                case 38: // 위 (회전)
+                    const originalShape = [...currentPiece.shape];
+                    const rotated = [];
+                    for(let y = 0; y < 4; y++) {
+                        for(let x = 0; x < 4; x++) {
+                            rotated[x * 4 + (3 - y)] = originalShape[y * 4 + x];
+                        }
+                    }
+                    currentPiece.shape = rotated;
+                    if(collision()) {
+                        currentPiece.shape = originalShape;
+                    }
+                    break;
+            }
+            draw();
+        });
+
+        // 게임 시작
+        currentPiece = createPiece();
+        
+        async function gameLoop() {
+            const gameOver = await update();
+            if(!gameOver) {
+                draw();
+                setTimeout(gameLoop, 1000);
+            }
+        }
+
+        gameLoop();
+    </script>
+</body>
+</html>
